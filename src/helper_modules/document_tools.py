@@ -21,6 +21,7 @@ Key Concepts:
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import List
 
@@ -86,8 +87,17 @@ class DocumentToolsManager:
         
         Hint: All necessary imports are already provided at the top of this file.
         """
-        # YOUR CODE HERE
-        pass
+        api_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+
+        Settings.llm = OpenAI(
+            model="gpt-3.5-turbo",
+            temperature=0,
+            api_base=api_base,
+        )
+        Settings.embed_model = OpenAIEmbedding(
+            model="text-embedding-ada-002",
+            api_base=api_base,
+        )
     
     def build_document_tools(self):
         """Build document query engines for each company
