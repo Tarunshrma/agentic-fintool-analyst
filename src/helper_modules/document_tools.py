@@ -115,7 +115,7 @@ class DocumentToolsManager:
         self.document_tools = []
         
         # TODO: Create a text splitter for chunking documents
-        # YOUR CODE HERE
+        splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
         
         for company in self.companies:
             # Determine company name for tool description
@@ -137,13 +137,44 @@ class DocumentToolsManager:
             
             try:
                 # TODO: Implement document processing pipeline
-                # YOUR CODE HERE
                 # - Load the PDF document
+                documents = SimpleDirectoryReader(input_files=[str(pdf_path)]).load_data()
+                if self.verbose:
+                    print(f"   📖 Loaded {len(documents)} document(s) for {company}")
+                
                 # - Split into chunks/nodes
+                nodes = splitter.get_nodes_from_documents(documents)
+                if self.verbose:
+                    print(f"   ✂️ Created {len(nodes)} searchable chunks for {company}")
+                
                 # - Add metadata (company info, document type)
+                for node in nodes:
+                    node.metadata.update({
+                        "company": company,
+                        "company_name": self.company_info[company]["name"],
+                        "sector": self.company_info[company]["sector"],
+                        "document_type": "10-K filing",
+                        "filing_year": "2024",
+                    })
+                
                 # - Build vector index
+                index = VectorStoreIndex(nodes)
+                
                 # - Create query engine
+                query_engine = index.as_query_engine(similarity_top_k=3)
+                
                 # - Wrap in QueryEngineTool with descriptive name and description
+                tool = QueryEngineTool.from_defaults(
+                    query_engine=query_engine,
+                    name=tool_name,
+                    description=(
+                        f"Use this tool to answer questions about {self.company_info[company]['name']} "
+                        f"({company}) using its 2024 SEC 10-K filing. This tool is best for "
+                        "business overview, revenue sources, risk factors, strategy, operations, "
+                        "financial performance discussion, and company-specific filing details."
+                    ),
+                )
+                self.document_tools.append(tool)
                 
                 if self.verbose:
                     print(f"   ✅ {company} tool created: {tool_name}")
