@@ -1,0 +1,13 @@
+.DS_Store
+mics/
+__pycache__/
+*.py[cod]
+
+# Local Python environment
+.venv/
+
+# Secrets
+.env
+!.env.example
+src/.env
+!src/.env.example
