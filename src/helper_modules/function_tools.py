@@ -24,6 +24,7 @@ Key Concepts:
 
 import logging
 import os
+import re
 import sqlite3
 import random
 from pathlib import Path
@@ -240,17 +241,65 @@ KEY TIPS:
                 # Handle error_context for retry logic if previous query failed
                 # Use self.llm.complete() to generate SQL
                 # Clean up response (remove markdown, handle multiple statements)
-                # YOUR CODE HERE
-                
-                return "SELECT 1"  # Placeholder - replace with your implementation
+                error_instruction = ""
+                if error_context:
+                    error_instruction = (
+                        f"\nThe previous SQL failed with this error: {error_context}\n"
+                        "Correct the SQL while preserving the user's intent.\n"
+                    )
+
+                prompt = f"""
+You are a careful SQLite query generator for a financial services database.
+Convert the user's question into one valid SQLite SELECT statement.
+
+Rules:
+- Return only SQL, with no Markdown, commentary, or explanation.
+- Use only SELECT statements.
+- Use table and column names exactly as shown in the schema.
+- Prefer explicit JOINs when a question spans customers, holdings, companies, or market data.
+- Limit broad result sets to 20 rows unless the user asks for an aggregate count or summary.
+
+{self.db_schema}
+{error_instruction}
+User question: {query_text}
+SQL:
+"""
+                response = self.llm.complete(prompt)
+                sql_query = str(response).strip()
+
+                sql_query = re.sub(r"^```(?:sql)?\s*", "", sql_query, flags=re.IGNORECASE)
+                sql_query = re.sub(r"\s*```$", "", sql_query)
+                sql_query = sql_query.strip()
+
+                statements = [stmt.strip() for stmt in sql_query.split(";") if stmt.strip()]
+                sql_query = statements[0] if statements else ""
+
+                if not sql_query.lower().startswith("select"):
+                    raise ValueError(f"Generated SQL must be a SELECT statement. Got: {sql_query}")
+
+                return sql_query
             
             def execute_sql(sql_query: str) -> Tuple[bool, list, list, str]:
                 """Execute SQL and return (success, results, column_names, error)"""
                 # TODO: Connect to database, execute query, extract results and column names
                 # Return tuple: (success_flag, results_list, column_names_list, error_message)
-                # YOUR CODE HERE
-                
-                return False, None, None, "Not implemented"
+                try:
+                    if not sql_query.strip().lower().startswith("select"):
+                        return False, None, None, "Only SELECT queries are allowed"
+
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    cursor.execute(sql_query)
+                    results = cursor.fetchall()
+                    column_names = (
+                        [description[0] for description in cursor.description]
+                        if cursor.description
+                        else []
+                    )
+                    conn.close()
+                    return True, results, column_names, ""
+                except Exception as e:
+                    return False, None, None, str(e)
             
             try:
                 # TODO: Implement the main database query logic
@@ -258,9 +307,34 @@ KEY TIPS:
                 # 2. Execute the SQL and get results
                 # 3. Format results with column names
                 # 4. If execution fails, retry with error context
-                # YOUR CODE HERE
-                
-                return "Database query not implemented yet"
+                sql_query = generate_sql(query)
+                success, results, column_names, error = execute_sql(sql_query)
+
+                if not success:
+                    sql_query = generate_sql(query, error_context=error)
+                    success, results, column_names, error = execute_sql(sql_query)
+
+                if not success:
+                    return (
+                        "Database query failed after retry.\n"
+                        f"SQL Query: {sql_query}\n"
+                        f"Error: {error}"
+                    )
+
+                formatted_rows = []
+                for row in results:
+                    formatted_rows.append(dict(zip(column_names, row)))
+
+                if not formatted_rows:
+                    result_text = "No matching rows found."
+                else:
+                    result_text = "\n".join(str(row) for row in formatted_rows)
+
+                return (
+                    f"SQL Query: {sql_query}\n\n"
+                    f"COLUMNS: {column_names}\n\n"
+                    f"Database Results:\n{result_text}"
+                )
                         
             except Exception as e:
                 return f"Database system error: {e}"
