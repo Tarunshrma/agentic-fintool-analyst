@@ -23,6 +23,7 @@ Key Concepts:
 """
 
 import logging
+import os
 import sqlite3
 import random
 from pathlib import Path
@@ -82,8 +83,18 @@ class FunctionToolsManager:
         
         Hint: This is similar to document_tools configuration
         """
-        # YOUR CODE HERE
-        pass
+        api_base = os.getenv("OPENAI_API_BASE", "https://api.openai.com/v1")
+
+        self.llm = OpenAI(
+            model="gpt-3.5-turbo",
+            temperature=0,
+            api_base=api_base,
+        )
+        Settings.llm = self.llm
+        Settings.embed_model = OpenAIEmbedding(
+            model="text-embedding-ada-002",
+            api_base=api_base,
+        )
     
     def _get_database_schema(self) -> str:
         """Get enhanced database schema with relationships for SQL generation
@@ -338,7 +349,35 @@ KEY TIPS:
         # Wrap each function with FunctionTool.from_defaults()
         # Provide descriptive names and descriptions for agent routing
         # Add all tools to self.function_tools list
-        # YOUR CODE HERE
+        self.function_tools = [
+            FunctionTool.from_defaults(
+                fn=database_query_tool,
+                name="database_query_tool",
+                description=(
+                    "Use this tool to answer questions about customers, portfolio holdings, "
+                    "companies, financial metrics, and stored market data in the SQLite database. "
+                    "It converts natural language questions into SQL and returns tabular results."
+                ),
+            ),
+            FunctionTool.from_defaults(
+                fn=finance_market_search_tool,
+                name="finance_market_search_tool",
+                description=(
+                    "Use this tool to retrieve current market information for supported stocks "
+                    "including Apple (AAPL), Alphabet/Google (GOOGL), and Tesla (TSLA). "
+                    "It is best for current prices, price changes, trading volume, and market data."
+                ),
+            ),
+            FunctionTool.from_defaults(
+                fn=pii_protection_tool,
+                name="pii_protection_tool",
+                description=(
+                    "Use this tool to mask personally identifiable information from database "
+                    "results, including names, email addresses, phone numbers, and other sensitive "
+                    "customer fields while preserving non-sensitive financial data."
+                ),
+            ),
+        ]
         
         if self.verbose:
             print("   ✅ Function tools created")
@@ -352,4 +391,3 @@ KEY TIPS:
             List of FunctionTool objects
         """
         return self.function_tools
-
