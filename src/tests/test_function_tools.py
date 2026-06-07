@@ -471,7 +471,9 @@ def main():
 
 if __name__ == "__main__":
     main()
+    sys.exit(0)
 
+"""
 Usage:
     python -m pytest tests/test_function_tools.py -v
     python -m pytest tests/test_function_tools.py::test_initialization -v

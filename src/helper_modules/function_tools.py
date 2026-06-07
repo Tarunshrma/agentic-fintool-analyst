@@ -23,6 +23,7 @@ Key Concepts:
 """
 
 import logging
+import ast
 import os
 import re
 import sqlite3
@@ -520,9 +521,24 @@ SQL:
                 # TODO: Create patterns for common PII field names
                 # Check field names against patterns (email, phone, names, address, ssn, etc.)
                 # Return set of detected PII field names
-                # YOUR CODE HERE
-                
-                return set()  # Placeholder
+                pii_patterns = [
+                    "name",
+                    "email",
+                    "phone",
+                    "address",
+                    "ssn",
+                    "social_security",
+                    "date_of_birth",
+                    "dob",
+                ]
+
+                pii_fields = set()
+                for field_name in field_names:
+                    normalized_name = str(field_name).lower()
+                    if any(pattern in normalized_name for pattern in pii_patterns):
+                        pii_fields.add(field_name)
+
+                return pii_fields
             
             def mask_field_value(field_name: str, value: str) -> str:
                 """Apply appropriate masking based on field type"""
@@ -530,17 +546,71 @@ SQL:
                 # Examples: abc@gmail.com -> ***@gmail.com
                 #          123-456-7890 -> ***-***-7890
                 #          John -> ****
-                # YOUR CODE HERE
-                
-                return str(value)  # Placeholder
+                value_str = str(value)
+                normalized_name = field_name.lower()
+
+                if value_str in {"", "None", "NULL"}:
+                    return value_str
+
+                if "email" in normalized_name and "@" in value_str:
+                    _, domain = value_str.split("@", 1)
+                    return f"***@{domain}"
+
+                if "phone" in normalized_name:
+                    digits = re.sub(r"\D", "", value_str)
+                    if len(digits) >= 4:
+                        return f"***-***-{digits[-4:]}"
+                    return "***"
+
+                if "name" in normalized_name:
+                    return "*" * len(value_str)
+
+                return "***"
             
             # TODO: Parse column names and detect PII fields
             # Parse database results line by line
             # For each line with PII fields, apply masking
             # Add notice about which fields were masked
-            # YOUR CODE HERE
-            
-            return database_results  # Placeholder - no masking implemented
+            try:
+                parsed_columns = ast.literal_eval(column_names)
+                if not isinstance(parsed_columns, list):
+                    parsed_columns = [str(parsed_columns)]
+            except Exception:
+                parsed_columns = [
+                    column.strip().strip("'\"")
+                    for column in column_names.strip("[]").split(",")
+                    if column.strip()
+                ]
+
+            pii_fields = detect_pii_fields(parsed_columns)
+            if not pii_fields:
+                return database_results
+
+            protected_lines = []
+            for line in database_results.splitlines():
+                stripped_line = line.strip()
+                if stripped_line.startswith("{") and stripped_line.endswith("}"):
+                    try:
+                        row = ast.literal_eval(stripped_line)
+                        if isinstance(row, dict):
+                            protected_row = {}
+                            for field_name, value in row.items():
+                                if field_name in pii_fields:
+                                    protected_row[field_name] = mask_field_value(field_name, value)
+                                else:
+                                    protected_row[field_name] = value
+                            protected_lines.append(str(protected_row))
+                            continue
+                    except Exception:
+                        pass
+
+                protected_lines.append(line)
+
+            masked_fields = ", ".join(sorted(pii_fields))
+            return (
+                f"PII protection applied. Masked fields: {masked_fields}\n\n"
+                + "\n".join(protected_lines)
+            )
         
         # TODO: Create FunctionTool objects for each function
         # Wrap each function with FunctionTool.from_defaults()
@@ -575,6 +645,14 @@ SQL:
                 ),
             ),
         ]
+
+        for tool in self.function_tools:
+            original_fn = tool.fn
+
+            def call_as_string(*args, _original_fn=original_fn, **kwargs):
+                return str(_original_fn(*args, **kwargs))
+
+            tool.call = call_as_string
         
         if self.verbose:
             print("   ✅ Function tools created")
