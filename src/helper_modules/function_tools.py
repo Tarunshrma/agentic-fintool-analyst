@@ -27,6 +27,7 @@ import os
 import re
 import sqlite3
 import random
+import requests
 from pathlib import Path
 from typing import List, Tuple
 
@@ -355,24 +356,146 @@ SQL:
             
             def get_real_stock_data(symbol: str) -> dict:
                 """Fetch real stock data from Yahoo Finance API"""
+                def get_cached_stock_data(error_message: str) -> dict:
+                    """Fetch latest stored market data when live Yahoo data is unavailable"""
+                    try:
+                        conn = sqlite3.connect(self.db_path)
+                        cursor = conn.cursor()
+                        cursor.execute(
+                            """
+                            SELECT close_price, volume, market_cap, date
+                            FROM market_data
+                            WHERE symbol = ?
+                            ORDER BY date DESC
+                            LIMIT 2
+                            """,
+                            (symbol,),
+                        )
+                        rows = cursor.fetchall()
+                        conn.close()
+
+                        if not rows:
+                            return {
+                                "success": False,
+                                "symbol": symbol,
+                                "error": error_message,
+                            }
+
+                        current_price, volume, market_cap, date = rows[0]
+                        previous_close = rows[1][0] if len(rows) > 1 else current_price
+                        change = current_price - previous_close
+                        change_percent = (change / previous_close) * 100 if previous_close else 0
+
+                        return {
+                            "success": True,
+                            "symbol": symbol,
+                            "current_price": current_price,
+                            "previous_close": previous_close,
+                            "change": change,
+                            "change_percent": change_percent,
+                            "volume": volume,
+                            "market_cap": market_cap,
+                            "source": f"cached market_data table ({date})",
+                            "live_error": error_message,
+                        }
+                    except Exception as cache_error:
+                        return {
+                            "success": False,
+                            "symbol": symbol,
+                            "error": f"{error_message}; cache fallback failed: {cache_error}",
+                        }
+
                 # TODO: Make API call to Yahoo Finance
                 # URL: https://query1.finance.yahoo.com/v8/finance/chart/{symbol}
                 # Extract: current price, previous close, volume, market cap
                 # Calculate: price change and change percentage
                 # Return: Dictionary with stock data and success flag
-                # YOUR CODE HERE
-                
-                return {'success': False, 'error': 'Not implemented'}
+                try:
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
+                    response = requests.get(url, timeout=10)
+                    response.raise_for_status()
+                    data = response.json()
+
+                    result = data.get("chart", {}).get("result", [])
+                    if not result:
+                        return get_cached_stock_data("No market data returned from Yahoo Finance")
+
+                    meta = result[0].get("meta", {})
+                    current_price = meta.get("regularMarketPrice")
+                    previous_close = meta.get("chartPreviousClose") or meta.get("previousClose")
+                    volume = meta.get("regularMarketVolume")
+                    market_cap = meta.get("marketCap")
+
+                    if current_price is None or previous_close is None:
+                        return get_cached_stock_data("Yahoo Finance response missing price data")
+
+                    change = current_price - previous_close
+                    change_percent = (change / previous_close) * 100 if previous_close else 0
+
+                    return {
+                        "success": True,
+                        "symbol": symbol,
+                        "current_price": current_price,
+                        "previous_close": previous_close,
+                        "change": change,
+                        "change_percent": change_percent,
+                        "volume": volume,
+                        "market_cap": market_cap,
+                        "source": "Yahoo Finance",
+                    }
+                except Exception as e:
+                    return get_cached_stock_data(str(e))
             
             try:
                 # TODO: Identify companies mentioned in the query
                 # Map company names/symbols to ticker symbols (AAPL, TSLA, GOOGL)
-                # Fetch stock data for each identified company
-                # Format results with price, change, volume
-                # Handle API failures with appropriate fallbacks
-                # YOUR CODE HERE
+                query_lower = query.lower()
+                symbol_map = {
+                    "AAPL": ["aapl", "apple"],
+                    "GOOGL": ["googl", "google", "alphabet"],
+                    "TSLA": ["tsla", "tesla"],
+                }
+
+                requested_symbols = [
+                    symbol
+                    for symbol, aliases in symbol_map.items()
+                    if any(alias in query_lower for alias in aliases)
+                ]
+
+                if not requested_symbols:
+                    requested_symbols = list(symbol_map.keys())
                 
-                return "Market data tool not implemented yet"
+                # Fetch stock data for each identified company
+                stock_results = [get_real_stock_data(symbol) for symbol in requested_symbols]
+                
+                # Format results with price, change, volume
+                formatted_results = []
+                for stock_data in stock_results:
+                    symbol = stock_data.get("symbol", "UNKNOWN")
+                    if not stock_data.get("success"):
+                        formatted_results.append(
+                            f"{symbol}: Market data unavailable ({stock_data.get('error', 'unknown error')})"
+                        )
+                        continue
+
+                    market_cap = stock_data.get("market_cap")
+                    market_cap_text = f"${market_cap:,.0f}" if market_cap else "Not available"
+                    volume = stock_data.get("volume")
+                    volume_text = f"{volume:,}" if volume else "Not available"
+
+                    formatted_results.append(
+                        f"{symbol} Market Data:\n"
+                        f"- Current Price: ${stock_data['current_price']:.2f}\n"
+                        f"- Previous Close: ${stock_data['previous_close']:.2f}\n"
+                        f"- Change: ${stock_data['change']:.2f} "
+                        f"({stock_data['change_percent']:.2f}%)\n"
+                        f"- Volume: {volume_text}\n"
+                        f"- Market Cap: {market_cap_text}\n"
+                        f"- Source: {stock_data.get('source', 'Unknown')}"
+                    )
+                
+                # Handle API failures with appropriate fallbacks
+                return "\n\n".join(formatted_results)
                     
             except Exception as e:
                 return f"Market data error: {e}"
