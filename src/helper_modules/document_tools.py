@@ -28,7 +28,7 @@ from typing import List
 # LlamaIndex imports
 from llama_index.core import SimpleDirectoryReader, Settings
 from llama_index.core.node_parser import SentenceSplitter
-from llama_index.core import VectorStoreIndex
+from llama_index.core import StorageContext, VectorStoreIndex, load_index_from_storage
 from llama_index.core.tools import QueryEngineTool
 from llama_index.llms.openai import OpenAI
 from llama_index.embeddings.openai import OpenAIEmbedding
@@ -54,6 +54,7 @@ class DocumentToolsManager:
         self.verbose = verbose
         self.project_root = Path.cwd()  # Use current working directory
         self.documents_dir = self.project_root / "data" / "10k_documents"
+        self.index_storage_dir = self.project_root / "data" / "index_storage"
         
         # Company metadata
         self.company_info = {
@@ -136,29 +137,42 @@ class DocumentToolsManager:
                 continue
             
             try:
-                # TODO: Implement document processing pipeline
-                # - Load the PDF document
-                documents = SimpleDirectoryReader(input_files=[str(pdf_path)]).load_data()
-                if self.verbose:
-                    print(f"   📖 Loaded {len(documents)} document(s) for {company}")
-                
-                # - Split into chunks/nodes
-                nodes = splitter.get_nodes_from_documents(documents)
-                if self.verbose:
-                    print(f"   ✂️ Created {len(nodes)} searchable chunks for {company}")
-                
-                # - Add metadata (company info, document type)
-                for node in nodes:
-                    node.metadata.update({
-                        "company": company,
-                        "company_name": self.company_info[company]["name"],
-                        "sector": self.company_info[company]["sector"],
-                        "document_type": "10-K filing",
-                        "filing_year": "2024",
-                    })
-                
-                # - Build vector index
-                index = VectorStoreIndex(nodes)
+                persist_dir = self.index_storage_dir / company
+
+                if persist_dir.exists():
+                    storage_context = StorageContext.from_defaults(
+                        persist_dir=str(persist_dir)
+                    )
+                    index = load_index_from_storage(storage_context)
+                    if self.verbose:
+                        print(f"   💾 Loaded cached vector index for {company}")
+                else:
+                    # TODO: Implement document processing pipeline
+                    # - Load the PDF document
+                    documents = SimpleDirectoryReader(input_files=[str(pdf_path)]).load_data()
+                    if self.verbose:
+                        print(f"   📖 Loaded {len(documents)} document(s) for {company}")
+                    
+                    # - Split into chunks/nodes
+                    nodes = splitter.get_nodes_from_documents(documents)
+                    if self.verbose:
+                        print(f"   ✂️ Created {len(nodes)} searchable chunks for {company}")
+                    
+                    # - Add metadata (company info, document type)
+                    for node in nodes:
+                        node.metadata.update({
+                            "company": company,
+                            "company_name": self.company_info[company]["name"],
+                            "sector": self.company_info[company]["sector"],
+                            "document_type": "10-K filing",
+                            "filing_year": "2024",
+                        })
+                    
+                    # - Build vector index
+                    index = VectorStoreIndex(nodes)
+                    index.storage_context.persist(persist_dir=str(persist_dir))
+                    if self.verbose:
+                        print(f"   💾 Cached vector index for {company}: {persist_dir}")
                 
                 # - Create query engine
                 query_engine = index.as_query_engine(similarity_top_k=3)

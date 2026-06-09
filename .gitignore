@@ -11,3 +11,6 @@ __pycache__/
 !.env.example
 src/.env
 !src/.env.example
+
+# Generated vector index cache
+src/data/index_storage/
