@@ -20,7 +20,15 @@ Expected Implementation Time: 90-120 minutes
 Key Learning: Multi-tool coordination, intelligent routing, result synthesis
 """
 
-import pytest
+try:
+    import pytest
+except ImportError:
+    class _PytestFallback:
+        @staticmethod
+        def fail(message):
+            raise AssertionError(message)
+
+    pytest = _PytestFallback()
 import sys
 import os
 from pathlib import Path
