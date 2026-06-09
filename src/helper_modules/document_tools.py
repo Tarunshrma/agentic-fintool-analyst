@@ -10,7 +10,7 @@ Learning Objectives:
 - Build QueryEngineTool objects for document analysis
 - Configure LLM and embedding models
 
-Your Task: Complete the missing implementations marked with YOUR CODE HERE
+Implementation status: complete.
 
 Key Concepts:
 1. LlamaIndex Settings: Configure global LLM and embedding models
@@ -74,8 +74,6 @@ class DocumentToolsManager:
     def _configure_settings(self):
         """Configure LlamaIndex settings with OpenAI models
         
-        TODO: Set up the global LlamaIndex settings for LLM and embeddings
-        
         Requirements:
         - Use OpenAI LLM with "gpt-3.5-turbo" model and temperature=0
         - Use OpenAI embeddings with "text-embedding-ada-002" model
@@ -115,7 +113,7 @@ class DocumentToolsManager:
         # Clear existing tools first to avoid duplicates
         self.document_tools = []
         
-        # TODO: Create a text splitter for chunking documents
+        # Create a text splitter for chunking documents.
         splitter = SentenceSplitter(chunk_size=1024, chunk_overlap=100)
         
         for company in self.companies:
@@ -147,18 +145,17 @@ class DocumentToolsManager:
                     if self.verbose:
                         print(f"   💾 Loaded cached vector index for {company}")
                 else:
-                    # TODO: Implement document processing pipeline
-                    # - Load the PDF document
+                    # Load the PDF document.
                     documents = SimpleDirectoryReader(input_files=[str(pdf_path)]).load_data()
                     if self.verbose:
                         print(f"   📖 Loaded {len(documents)} document(s) for {company}")
                     
-                    # - Split into chunks/nodes
+                    # Split into chunks/nodes.
                     nodes = splitter.get_nodes_from_documents(documents)
                     if self.verbose:
                         print(f"   ✂️ Created {len(nodes)} searchable chunks for {company}")
                     
-                    # - Add metadata (company info, document type)
+                    # Add metadata so each retrieved chunk carries source context.
                     for node in nodes:
                         node.metadata.update({
                             "company": company,
@@ -168,7 +165,7 @@ class DocumentToolsManager:
                             "filing_year": "2024",
                         })
                     
-                    # - Build vector index
+                    # Build and persist the vector index for future runs.
                     index = VectorStoreIndex(nodes)
                     index.storage_context.persist(persist_dir=str(persist_dir))
                     if self.verbose:

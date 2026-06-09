@@ -12,7 +12,7 @@ Learning Objectives:
 - Build PII protection mechanisms
 - Learn about real-time API integration
 
-Your Task: Complete the missing implementations marked with YOUR CODE HERE
+Implementation status: complete.
 
 Key Concepts:
 1. FunctionTool Creation: Wrap Python functions as LlamaIndex tools
@@ -71,8 +71,6 @@ class FunctionToolsManager:
     
     def _configure_settings(self):
         """Configure LlamaIndex settings
-        
-        TODO: Set up the LLM for SQL generation and other AI tasks
         
         Requirements:
         - Create OpenAI LLM with "gpt-3.5-turbo" model and temperature=0
@@ -217,8 +215,7 @@ KEY TIPS:
         # Clear existing tools
         self.function_tools = []
         
-        # TODO: Create the three main function tools
-        # Implement these three nested functions and wrap them with FunctionTool:
+        # Create the three main function tools and wrap them with FunctionTool:
         # 1. database_query_tool - Natural language to SQL conversion and execution
         # 2. finance_market_search_tool - Real-time Yahoo Finance API integration
         # 3. pii_protection_tool - Automatic PII detection and masking
@@ -239,10 +236,7 @@ KEY TIPS:
             
             def generate_sql(query_text: str, error_context: str = None) -> str:
                 """Generate SQL query from natural language using LLM"""
-                # TODO: Build prompt that includes database schema and query
-                # Handle error_context for retry logic if previous query failed
-                # Use self.llm.complete() to generate SQL
-                # Clean up response (remove markdown, handle multiple statements)
+                # Build a schema-grounded prompt, then clean common LLM formatting.
                 error_instruction = ""
                 if error_context:
                     error_instruction = (
@@ -283,8 +277,7 @@ SQL:
             
             def execute_sql(sql_query: str) -> Tuple[bool, list, list, str]:
                 """Execute SQL and return (success, results, column_names, error)"""
-                # TODO: Connect to database, execute query, extract results and column names
-                # Return tuple: (success_flag, results_list, column_names_list, error_message)
+                # Return tuple: (success_flag, results_list, column_names_list, error_message).
                 try:
                     if not sql_query.strip().lower().startswith("select"):
                         return False, None, None, "Only SELECT queries are allowed"
@@ -304,11 +297,7 @@ SQL:
                     return False, None, None, str(e)
             
             try:
-                # TODO: Implement the main database query logic
-                # 1. Generate SQL from natural language query
-                # 2. Execute the SQL and get results
-                # 3. Format results with column names
-                # 4. If execution fails, retry with error context
+                # Generate SQL, execute it, retry once on failure, then format rows.
                 sql_query = generate_sql(query)
                 success, results, column_names, error = execute_sql(sql_query)
 
@@ -406,7 +395,7 @@ SQL:
                             "error": f"{error_message}; cache fallback failed: {cache_error}",
                         }
 
-                # TODO: Make API call to Yahoo Finance
+                # Make API call to Yahoo Finance.
                 # URL: https://query1.finance.yahoo.com/v8/finance/chart/{symbol}
                 # Extract: current price, previous close, volume, market cap
                 # Calculate: price change and change percentage
@@ -448,8 +437,7 @@ SQL:
                     return get_cached_stock_data(str(e))
             
             try:
-                # TODO: Identify companies mentioned in the query
-                # Map company names/symbols to ticker symbols (AAPL, TSLA, GOOGL)
+                # Map company names/symbols to ticker symbols (AAPL, TSLA, GOOGL).
                 query_lower = query.lower()
                 symbol_map = {
                     "AAPL": ["aapl", "apple"],
@@ -495,7 +483,7 @@ SQL:
                         f"- Source: {stock_data.get('source', 'Unknown')}"
                     )
                 
-                # Handle API failures with appropriate fallbacks
+                # API failures are handled inside get_real_stock_data using cached data.
                 return "\n\n".join(formatted_results)
                     
             except Exception as e:
@@ -518,9 +506,7 @@ SQL:
             
             def detect_pii_fields(field_names: list) -> set:
                 """Detect which fields contain PII based on field names"""
-                # TODO: Create patterns for common PII field names
-                # Check field names against patterns (email, phone, names, address, ssn, etc.)
-                # Return set of detected PII field names
+                # Check field names against common PII patterns.
                 pii_patterns = [
                     "name",
                     "email",
@@ -542,7 +528,7 @@ SQL:
             
             def mask_field_value(field_name: str, value: str) -> str:
                 """Apply appropriate masking based on field type"""
-                # TODO: Implement field-specific masking strategies
+                # Apply field-specific masking strategies.
                 # Examples: abc@gmail.com -> ***@gmail.com
                 #          123-456-7890 -> ***-***-7890
                 #          John -> ****
@@ -567,10 +553,7 @@ SQL:
 
                 return "***"
             
-            # TODO: Parse column names and detect PII fields
-            # Parse database results line by line
-            # For each line with PII fields, apply masking
-            # Add notice about which fields were masked
+            # Parse column names, mask PII fields row by row, and add a notice.
             try:
                 parsed_columns = ast.literal_eval(column_names)
                 if not isinstance(parsed_columns, list):
@@ -602,7 +585,8 @@ SQL:
                             protected_lines.append(str(protected_row))
                             continue
                     except Exception:
-                        pass
+                        protected_lines.append(line)
+                        continue
 
                 protected_lines.append(line)
 
@@ -612,10 +596,7 @@ SQL:
                 + "\n".join(protected_lines)
             )
         
-        # TODO: Create FunctionTool objects for each function
-        # Wrap each function with FunctionTool.from_defaults()
-        # Provide descriptive names and descriptions for agent routing
-        # Add all tools to self.function_tools list
+        # Wrap functions as agent-usable tools with descriptive routing metadata.
         self.function_tools = [
             FunctionTool.from_defaults(
                 fn=database_query_tool,

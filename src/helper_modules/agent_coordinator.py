@@ -12,7 +12,7 @@ Learning Objectives:
 - Build modular agent architecture
 - Master PII protection in agent workflows
 
-Your Task: Complete the missing implementations marked with YOUR CODE HERE
+Implementation status: complete.
 
 Key Features:
 - Multi-tool coordination with intelligent routing
@@ -96,8 +96,6 @@ class AgentCoordinator:
     def _configure_settings(self):
         """Configure LlamaIndex settings with Vocareum API compatibility
         
-        TODO: Set up the LLM and embedding model for intelligent routing
-        
         Requirements:
         - Create OpenAI LLM with "gpt-3.5-turbo" model and temperature=0
         - Create OpenAIEmbedding with "text-embedding-ada-002" model
@@ -160,9 +158,6 @@ class AgentCoordinator:
     def _create_tools(self):
         """Create all tools automatically using helper modules
         
-        TODO: Import and use the DocumentToolsManager and FunctionToolsManager
-        to create all necessary tools for the coordinator.
-        
         Steps:
         1. Import DocumentToolsManager from .document_tools
         2. Import FunctionToolsManager from .function_tools
@@ -204,10 +199,7 @@ class AgentCoordinator:
         if "COLUMNS:" not in result:
             return result
         
-        # TODO: Extract column names from result
-        # Detect PII fields using _detect_pii_fields()
-        # If PII detected, find and use the pii_protection_tool
-        # Apply protection and return masked result
+        # Extract column names, detect PII, and apply the PII protection tool.
         try:
             columns_text = result.split("COLUMNS:", 1)[1].splitlines()[0].strip()
             column_names = ast.literal_eval(columns_text)
@@ -237,9 +229,7 @@ class AgentCoordinator:
         Returns:
             Set of field names that contain PII
         """
-        # TODO: Define PII field patterns (email, phone, names, address, ssn, etc.)
-        # Check each field name against patterns
-        # Return set of detected PII field names
+        # Check field names against common PII patterns.
         pii_patterns = [
             "name",
             "email",
@@ -273,13 +263,7 @@ class AgentCoordinator:
             List of tuples: (tool_name, tool_description, result)
         """
         
-        # TODO: Build routing logic
-        # 1. Create descriptions of all available tools
-        # 2. Build LLM prompt with query and tool options
-        # 3. Include routing guidelines (database for customers, market for prices, etc.)
-        # 4. Parse LLM response to get tool indices
-        # 5. Execute selected tools and collect results
-        # 6. Apply PII protection to database results
+        # Route with reliable keyword rules, then execute selected tools.
         query_lower = query.lower()
         selected_tools = []
 
@@ -453,12 +437,7 @@ Synthesized answer:
         if verbose:
             print(f"🎯 Query: {question}")
         
-        # TODO: Implement query processing workflow
-        # 1. Route query to appropriate tools using _route_query()
-        # 2. Display tool selection info if verbose
-        # 3. If single tool result, return it directly
-        # 4. If multiple tool results, synthesize using LLM
-        # 5. Return comprehensive answer
+        # Route, optionally display selected tools, then return or synthesize results.
         routed_results = self._route_query(question)
 
         if verbose:
