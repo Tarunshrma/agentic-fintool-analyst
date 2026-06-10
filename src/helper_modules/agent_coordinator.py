@@ -25,6 +25,7 @@ Key Features:
 
 import os
 import ast
+import json
 import logging
 from typing import Dict, List, Any, Tuple, Optional
 from pathlib import Path
@@ -144,6 +145,8 @@ class AgentCoordinator:
             else:
                 # Create tools automatically
                 self._create_tools()
+
+            self._tools_initialized = True
             
             if self.verbose:
                 status = self.get_status()
@@ -250,20 +253,8 @@ class AgentCoordinator:
         return pii_fields
     
 
-    def _route_query(self, query: str) -> List[Tuple[str, str, Any]]:
-        """Use LLM to intelligently route query to appropriate tools
-        
-        This method analyzes the user's query and determines which tools are needed
-        to provide a complete answer, then executes those tools and returns results.
-        
-        Args:
-            query: User's natural language query
-            
-        Returns:
-            List of tuples: (tool_name, tool_description, result)
-        """
-        
-        # Route with reliable keyword rules, then execute selected tools.
+    def _keyword_select_tools(self, query: str) -> List[Any]:
+        """Select tools with deterministic keyword rules as a safe fallback"""
         query_lower = query.lower()
         selected_tools = []
 
@@ -333,6 +324,85 @@ class AgentCoordinator:
         if not selected_tools:
             selected_tools = self.document_tools[:1] if self.document_tools else self.function_tools[:1]
 
+        return selected_tools
+
+    def _llm_select_tools(self, query: str) -> List[Any]:
+        """Use the LLM to choose the most relevant tools for a user query"""
+        available_tools = self.document_tools + self.function_tools
+        if not available_tools:
+            return []
+
+        tool_catalog = []
+        tool_lookup = {}
+        for tool in available_tools:
+            tool_name = tool.metadata.name
+            tool_lookup[tool_name] = tool
+            tool_catalog.append({
+                "name": tool_name,
+                "description": tool.metadata.description,
+            })
+
+        prompt = f"""
+You are the routing brain for a modular financial analyst agent.
+Choose the minimum set of tools needed to answer the user's question.
+
+Available tools:
+{json.dumps(tool_catalog, indent=2)}
+
+Routing guidelines:
+- Use company 10-K filing tools for annual reports, filings, risk factors,
+  business strategy, operations, revenue discussion, and company disclosures.
+- Use database_query_tool for customer records, portfolio holdings, shares,
+  investment profiles, risk tolerance, and internal database questions.
+- Use finance_market_search_tool for current stock prices, market data,
+  trading volume, price changes, and market capitalization.
+- Do not select pii_protection_tool directly; privacy protection is applied
+  automatically after database results when sensitive fields are detected.
+- Select multiple tools when the question asks for cross-source analysis.
+
+Return only valid JSON in this exact shape:
+{{"tools": ["tool_name_1", "tool_name_2"]}}
+
+User question: {query}
+"""
+        try:
+            response = str(self.llm.complete(prompt)).strip()
+            response = response.removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+            parsed = json.loads(response)
+            tool_names = parsed.get("tools", [])
+            if not isinstance(tool_names, list):
+                return []
+
+            selected_tools = []
+            for tool_name in tool_names:
+                tool = tool_lookup.get(str(tool_name))
+                if tool and tool.metadata.name != "pii_protection_tool":
+                    selected_tools.append(tool)
+
+            return selected_tools
+        except Exception as e:
+            logger.warning(f"LLM routing failed, falling back to keyword routing: {e}")
+            return []
+
+    def _route_query(self, query: str) -> List[Tuple[str, str, Any]]:
+        """Use LLM-selected routing to execute the appropriate tools
+        
+        This method analyzes the user's query, selects the tools needed to
+        answer it, executes those tools, and applies automatic PII protection.
+        It uses deterministic keyword routing as a fallback when the LLM cannot
+        return parseable tool choices.
+        
+        Args:
+            query: User's natural language query
+            
+        Returns:
+            List of tuples: (tool_name, tool_description, result)
+        """
+        
+        selected_tools = self._llm_select_tools(query)
+        if not selected_tools:
+            selected_tools = self._keyword_select_tools(query)
+
         routed_results = []
         seen_tool_names = set()
         for tool in selected_tools:
@@ -356,10 +426,14 @@ class AgentCoordinator:
 
     def _simple_routing(self, query: str) -> List[Tuple[str, str, Any]]:
         """Keyword-based routing fallback used by tests and debugging"""
-        return self._route_query(query)
+        selected_tools = self._keyword_select_tools(query)
+        return [
+            (tool.metadata.name, tool.metadata.description, "")
+            for tool in selected_tools
+        ]
 
     def _intelligent_routing(self, query: str) -> List[Tuple[str, str, Any]]:
-        """LLM-routing compatibility hook; currently uses the reliable simple router"""
+        """LLM-based routing compatibility hook used by tests and debugging"""
         return self._route_query(query)
 
     def _synthesize_results(self, question: str, results: List[Any]) -> str:
